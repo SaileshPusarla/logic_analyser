@@ -2,30 +2,41 @@ cmake_minimum_required(VERSION 3.13)
 
 # 1. Point to your submodule
 set(PICO_SDK_PATH ${CMAKE_CURRENT_SOURCE_DIR}/pico-sdk)
-
-# 2. FORCE PICO 2 (RP2350) TARGET
 set(PICO_BOARD pico2 CACHE STRING "Board type")
 
-# 3. Load the SDK's initialization logic
+# 2. Include SDK
 include(${PICO_SDK_PATH}/pico_sdk_init.cmake)
 
-project(my_pico_project C CXX ASM)
+# 3. Project definition
+project(logic C CXX ASM)
 
-set(CMAKE_C_STANDARD 11)
-set(CMAKE_CXX_STANDARD 17)
-
-# 4. Initialize the SDK (now it knows it's a Pico 2)
+# 4. Initialize SDK
 pico_sdk_init()
 
-add_executable(my_pico_project
+# 6. Add executable
+add_executable(logic
     src/main.c
+    src/lib/capture.c
+    src/lib/analyze.c
+    src/lib/stream.c
+    src/lib/ui.c
 )
 
-target_link_libraries(my_pico_project 
-    pico_stdlib
+# Assuming pio_sampling.pio is in your root folder
+pico_generate_pio_header(logic ${CMAKE_CURRENT_SOURCE_DIR}/pio_sampling.pio)
+
+# 7. Include directories
+target_include_directories(logic PRIVATE
+    src/lib
+    ${CMAKE_CURRENT_BINARY_DIR}/pio
 )
 
-pico_enable_stdio_usb(my_pico_project 1)
-pico_enable_stdio_uart(my_pico_project 0)
+# 8. Link libraries
+target_link_libraries(logic pico_stdlib hardware_pio pico_multicore)
 
-pico_add_extra_outputs(my_pico_project)
+# 9. USB/UART
+pico_enable_stdio_usb(logic 1)
+pico_enable_stdio_uart(logic 0)
+
+# 10. Extra outputs
+pico_add_extra_outputs(logic)
