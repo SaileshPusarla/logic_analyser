@@ -2,30 +2,31 @@
 #define CAPTURE_H
 
 #include <stdint.h>
-#include <stddef.h>
 #include <stdbool.h>
 
-typedef struct {
-    uint8_t pin_base;
-    uint8_t pin_count;
-    float sample_freq_mhz;
-    uint32_t *buffer;
-    size_t buffer_size_words;
-} capture_config_t;
 
-// Initialize PIO, DMA, buffers
-void capture_init(const capture_config_t *config);
+// --- General Initialization ---
+void capture_init(void);
 
-// Arm capture with trigger
-void capture_arm(uint8_t trigger_pin, bool trigger_level);
+// --- Digital Mode (Snapshot) ---
+void capture_digital_config(uint32_t sample_rate_hz, uint32_t sample_count);
+void capture_digital_start(void);
+bool capture_digital_done(void);
+uint8_t* capture_digital_get_buffer(void);
+uint32_t capture_digital_get_sample_count(void);
 
-// Check if capture is done
-bool capture_done(void);
+// --- Analog Mode (Continuous Triple Buffer) ---
+void capture_analog_config(uint32_t sample_rate_hz);
+void capture_analog_start(void);
 
-// Get pointer to capture buffer
-uint32_t* capture_get_buffer(void);
+// Called in the main loop to check if a buffer is ready for math/USB
+uint16_t* capture_analog_get_ready_buffer(void);
 
-// Reset capture
-void capture_reset(void);
+// Called in the main loop to give the buffer back to the DMA system
+void capture_analog_release_buffer(void);
 
+#ifdef __cplusplus
+}
 #endif
+
+#endif H

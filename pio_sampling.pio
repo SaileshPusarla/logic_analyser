@@ -1,5 +1,0 @@
-.program sampler 
-
-.wrap_target 
-    in pins, 8 
-.wrap

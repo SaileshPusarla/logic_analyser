@@ -23,7 +23,7 @@ add_executable(logic
 )
 
 # Assuming pio_sampling.pio is in your root folder
-pico_generate_pio_header(logic ${CMAKE_CURRENT_SOURCE_DIR}/pio_sampling.pio)
+pico_generate_pio_header(logic ${CMAKE_CURRENT_SOURCE_DIR}/logic_analyzer.pio)
 
 # 7. Include directories
 target_include_directories(logic PRIVATE
@@ -32,8 +32,7 @@ target_include_directories(logic PRIVATE
 )
 
 # 8. Link libraries
-target_link_libraries(logic pico_stdlib hardware_pio pico_multicore)
-
+target_link_libraries(logic pico_stdlib hardware_pio pico_multicore hardware_pio hardware_dma hardware_adc hardware_clocks )
 # 9. USB/UART
 pico_enable_stdio_usb(logic 1)
 pico_enable_stdio_uart(logic 0)
