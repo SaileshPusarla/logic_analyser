@@ -1,6 +1,5 @@
 .program logic_analyzer
-
-loop:
+.wrap_target
     in pins, 8
-    push block
-    jmp loop
+    push noblock
+.wrap

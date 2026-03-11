@@ -2,31 +2,36 @@
 #define CAPTURE_H
 
 #include <stdint.h>
+#include <stddef.h>
 #include <stdbool.h>
 
+#define CAPTURE_BUFFER_SIZE (256 * 1024)
+#define CAPTURE_CHANNELS 8
+#define CAPTURE_SAMPLE_RATE 5000000
 
-// --- General Initialization ---
-void capture_init(void);
+typedef enum {
+    TRIGGER_NONE = 0,
+    TRIGGER_RISING,
+    TRIGGER_FALLING,
+    TRIGGER_HIGH,
+    TRIGGER_LOW
+} trigger_mode_t;
 
-// --- Digital Mode (Snapshot) ---
-void capture_digital_config(uint32_t sample_rate_hz, uint32_t sample_count);
-void capture_digital_start(void);
-bool capture_digital_done(void);
-uint8_t* capture_digital_get_buffer(void);
-uint32_t capture_digital_get_sample_count(void);
+typedef struct {
+    trigger_mode_t mode;
+    uint8_t channel;
+} trigger_config_t;
 
-// --- Analog Mode (Continuous Triple Buffer) ---
-void capture_analog_config(uint32_t sample_rate_hz);
-void capture_analog_start(void);
+typedef struct {
+    uint8_t *data;
+    size_t length;
+    uint32_t sample_rate;
+    uint8_t channels;
+} capture_buffer_t;
 
-// Called in the main loop to check if a buffer is ready for math/USB
-uint16_t* capture_analog_get_ready_buffer(void);
+bool capture_init(trigger_config_t trig);
+bool capture_start(void);
+bool capture_wait(void);
+capture_buffer_t capture_get_buffer(void);
 
-// Called in the main loop to give the buffer back to the DMA system
-void capture_analog_release_buffer(void);
-
-#ifdef __cplusplus
-}
 #endif
-
-#endif H

@@ -32,7 +32,7 @@ target_include_directories(logic PRIVATE
 )
 
 # 8. Link libraries
-target_link_libraries(logic pico_stdlib hardware_pio pico_multicore hardware_pio hardware_dma hardware_adc hardware_clocks )
+target_link_libraries(logic hardware_i2c pico_stdlib hardware_pio pico_multicore hardware_pio hardware_dma hardware_adc hardware_clocks )
 # 9. USB/UART
 pico_enable_stdio_usb(logic 1)
 pico_enable_stdio_uart(logic 0)
