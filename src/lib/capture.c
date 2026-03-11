@@ -29,7 +29,19 @@ bool capture_init(trigger_config_t trig)
 
     sm_config_set_in_pins(&c, SAMPLE_PIN_BASE);
 
-    float clkdiv = (float)clock_get_hz(clk_sys) / CAPTURE_SAMPLE_RATE;
+    sm_config_set_in_shift(
+        &c,
+        true,   // shift right
+        true,   // autopush
+        32
+    );
+
+    sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_RX);
+
+    float clkdiv =
+        (float)clock_get_hz(clk_sys) /
+        (float)CAPTURE_SAMPLE_RATE;
+
     sm_config_set_clkdiv(&c, clkdiv);
 
     pio_sm_init(pio, sm, offset, &c);
@@ -40,6 +52,7 @@ bool capture_init(trigger_config_t trig)
 
         gpio_init(pin);
         gpio_set_dir(pin, GPIO_IN);
+        gpio_disable_pulls(pin);
 
         pio_gpio_init(pio, pin);
     }
@@ -84,8 +97,13 @@ bool capture_init(trigger_config_t trig)
 
 bool capture_start(void)
 {
-    /* reset write address and transfer count */
-    dma_channel_set_write_addr(dma_chan, buffer32, false);
+    pio_sm_clear_fifos(pio, sm);
+
+    dma_channel_set_write_addr(
+        dma_chan,
+        buffer32,
+        false
+    );
 
     dma_channel_set_trans_count(
         dma_chan,
@@ -103,7 +121,9 @@ bool capture_start(void)
 bool capture_wait(void)
 {
     dma_channel_wait_for_finish_blocking(dma_chan);
+
     pio_sm_set_enabled(pio, sm, false);
+
     return true;
 }
 
