@@ -1,140 +1,81 @@
 #include "capture.h"
-
-#include "pico/stdlib.h"
-#include "hardware/pio.h"
-#include "hardware/dma.h"
-#include "hardware/clocks.h"
-
 #include "logic_analyzer.pio.h"
+#include "hardware/clocks.h" // <--- Fixes clock_get_hz and clk_sys
+#include "hardware/irq.h"
 
-#define SAMPLE_PIN_BASE 2
-#define SAMPLE_PIN_COUNT 8
-
-static uint32_t buffer32[CAPTURE_BUFFER_SIZE / 4];
-
-static PIO pio = pio0;
-static uint sm = 0;
-
+static uint32_t capture_storage[CAPTURE_BUFFER_SIZE_BYTES / 4];
 static int dma_chan;
+static PIO _pio;
+static uint _sm;
+static volatile bool transfer_complete = false;
 
-static trigger_config_t trigger;
+void __isr dma_handler() {
+    dma_hw->ints0 = 1u << dma_chan;
+    transfer_complete = true;
+}
 
-bool capture_init(trigger_config_t trig)
-{
-    trigger = trig;
+void capture_init(PIO pio, uint sm, float freq_hz) {
+    _pio = pio;
+    _sm = sm;
 
     uint offset = pio_add_program(pio, &logic_analyzer_program);
-
     pio_sm_config c = logic_analyzer_program_get_default_config(offset);
-
-    sm_config_set_in_pins(&c, SAMPLE_PIN_BASE);
-
-    sm_config_set_in_shift(
-        &c,
-        true,   // shift right
-        true,   // autopush
-        32
-    );
-
+    
+    sm_config_set_in_pins(&c, CAPTURE_PIN_BASE);
+    for(int i = 0; i < CAPTURE_PIN_COUNT; i++) {
+        pio_gpio_init(pio, CAPTURE_PIN_BASE + i);
+    }
+    
+    sm_config_set_in_shift(&c, true, true, 32);
     sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_RX);
 
-    float clkdiv =
-        (float)clock_get_hz(clk_sys) /
-        (float)CAPTURE_SAMPLE_RATE;
-
-    sm_config_set_clkdiv(&c, clkdiv);
+    // clock_get_hz(clk_sys) now works with hardware/clocks.h included
+    float div = (float)clock_get_hz(clk_sys) / freq_hz;
+    sm_config_set_clkdiv(&c, div);
 
     pio_sm_init(pio, sm, offset, &c);
 
-    for (int i = 0; i < SAMPLE_PIN_COUNT; i++)
-    {
-        uint pin = SAMPLE_PIN_BASE + i;
-
-        gpio_init(pin);
-        gpio_set_dir(pin, GPIO_IN);
-        gpio_disable_pulls(pin);
-
-        pio_gpio_init(pio, pin);
-    }
-
-    pio_sm_set_consecutive_pindirs(
-        pio,
-        sm,
-        SAMPLE_PIN_BASE,
-        SAMPLE_PIN_COUNT,
-        false
-    );
-
     dma_chan = dma_claim_unused_channel(true);
-
-    dma_channel_config cfg =
-        dma_channel_get_default_config(dma_chan);
-
-    channel_config_set_transfer_data_size(
-        &cfg,
-        DMA_SIZE_32
-    );
-
-    channel_config_set_read_increment(&cfg, false);
-    channel_config_set_write_increment(&cfg, true);
-
-    channel_config_set_dreq(
-        &cfg,
-        pio_get_dreq(pio, sm, false)
-    );
+    dma_channel_config dc = dma_channel_get_default_config(dma_chan);
+    channel_config_set_read_increment(&dc, false);
+    channel_config_set_write_increment(&dc, true);
+    channel_config_set_transfer_data_size(&dc, DMA_SIZE_32);
+    channel_config_set_dreq(&dc, pio_get_dreq(pio, sm, false));
 
     dma_channel_configure(
-        dma_chan,
-        &cfg,
-        buffer32,
+        dma_chan, &dc,
+        capture_storage,
         &pio->rxf[sm],
-        CAPTURE_BUFFER_SIZE / 4,
+        CAPTURE_BUFFER_SIZE_BYTES / 4,
         false
     );
 
-    return true;
+    dma_channel_set_irq0_enabled(dma_chan, true);
+    irq_set_exclusive_handler(DMA_IRQ_0, dma_handler);
+    irq_set_enabled(DMA_IRQ_0, true);
 }
 
-bool capture_start(void)
-{
-    pio_sm_clear_fifos(pio, sm);
-
-    dma_channel_set_write_addr(
-        dma_chan,
-        buffer32,
-        false
-    );
-
-    dma_channel_set_trans_count(
-        dma_chan,
-        CAPTURE_BUFFER_SIZE / 4,
-        false
-    );
-
-    dma_channel_start(dma_chan);
-
-    pio_sm_set_enabled(pio, sm, true);
-
-    return true;
+void capture_start() {
+    transfer_complete = false;
+    dma_channel_set_trans_count(dma_chan, CAPTURE_BUFFER_SIZE_BYTES / 4, true);
+    pio_sm_set_enabled(_pio, _sm, true);
 }
 
-bool capture_wait(void)
-{
-    dma_channel_wait_for_finish_blocking(dma_chan);
-
-    pio_sm_set_enabled(pio, sm, false);
-
-    return true;
+// Added for stream.c compatibility
+void capture_wait() {
+    while (!transfer_complete) {
+        tight_loop_contents();
+    }
 }
 
-capture_buffer_t capture_get_buffer(void)
-{
-    capture_buffer_t out;
+bool capture_is_done() {
+    return transfer_complete;
+}
 
-    out.data = (uint8_t*)buffer32;
-    out.length = CAPTURE_BUFFER_SIZE;
-    out.sample_rate = CAPTURE_SAMPLE_RATE;
-    out.channels = CAPTURE_CHANNELS;
-
-    return out;
+// Returns the struct expected by stream.c
+capture_buffer_t capture_get_buffer() {
+    capture_buffer_t buf;
+    buf.data = (uint8_t*)capture_storage;
+    buf.length = CAPTURE_BUFFER_SIZE_BYTES;
+    return buf;
 }

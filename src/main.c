@@ -1,70 +1,68 @@
 #include <stdio.h>
 #include "pico/stdlib.h"
-#include "hardware/pio.h"
+#include "pico/multicore.h"
+#include "capture.h"  // Ensure path matches your project structure
 
-#include "capture.h"
+#define TEST_SIGNAL_PIN 2
 
-static void print_byte_binary(uint8_t v)
-{
-    for (int i = 7; i >= 0; i--)
-    {
-        printf("%d", (v >> i) & 1);
+void core1_entry() {
+    printf("Core 1: Started and waiting for data...\n");
+    while (1) {
+        if (capture_is_done()) {
+            capture_buffer_t cap = capture_get_buffer();
+            printf("\n--- DATA RECEIVED (%d bytes) ---\n", cap.length);
+            
+            // Print only the first 50 samples to be safe
+            for (size_t i = 0; i < 50; i++) {
+                uint8_t val = cap.data[i];
+                for (int b = 7; b >= 0; b--) {
+                    printf("%c", (val & (1 << b)) ? '|' : '.');
+                }
+                printf(" [0x%02X]\n", val);
+            }
+            printf("--- END PREVIEW ---\n");
+            
+            // Crucial: Clear the "done" state if you have a mechanism, 
+            // or just rely on capture_start() resetting it.
+            sleep_ms(2000); 
+        }
+        tight_loop_contents();
     }
 }
 
-int main()
-{
+int main() {
     stdio_init_all();
+    sleep_ms(2000); // Give you time to open picocom
+    printf("System Initializing...\n");
 
-    sleep_ms(2000);  // allow USB enumeration
+    capture_init(pio0, 0, 5000000.0f);
+    multicore_launch_core1(core1_entry);
 
-    printf("\n===== LOGIC ANALYZER TEST =====\n");
-    printf("Program started\n");
+    gpio_init(TEST_SIGNAL_PIN);
+    gpio_set_dir(TEST_SIGNAL_PIN, GPIO_OUT);
 
-
-    trigger_config_t trig = {
-        .mode = TRIGGER_NONE,
-        .channel = 0
-    };
-
-    printf("Calling capture_init...\n");
-
-    if (!capture_init(trig))
-    {
-        printf("capture_init FAILED\n");
-        while (1);
-    }
-
-    printf("capture_init OK\n");
-
-    while (1)
-    {
-        printf("\n--- NEW CAPTURE ---\n");
-
-        printf("Starting capture...\n");
-
+    while (1) {
+        printf("Main: Starting Capture (Waiting for Falling Edge on GPIO 2)...\n");
         capture_start();
-
-        printf("Waiting for DMA...\n");
-
-        capture_wait();
-
-        printf("DMA complete\n");
-
-        capture_buffer_t cap = capture_get_buffer();
-
-        printf("Captured %u bytes\n", (unsigned)cap.length);
-
-        printf("\nFirst 32 samples (8 channels):\n");
-
-        for (int i = 0; i < 32; i++)
-        {
-            print_byte_binary(cap.data[i]);
-            printf("\n");
+        
+        // Force a toggle to guarantee a falling edge
+        gpio_put(TEST_SIGNAL_PIN, 1);
+        sleep_ms(10);
+        gpio_put(TEST_SIGNAL_PIN, 0); // This should trigger the PIO!
+        
+        // Generate a 1kHz clock for a bit
+        for(int i = 0; i < 1000; i++) {
+            gpio_put(TEST_SIGNAL_PIN, 1);
+            sleep_us(500);
+            gpio_put(TEST_SIGNAL_PIN, 0);
+            sleep_us(500);
         }
 
-        printf("\n");
-
-        sleep_ms(500);
+        printf("Main: Signals generated. Waiting for DMA to fill 384KB...\n");
+        capture_wait();
+        printf("Main: Capture Complete!\n");
+        
+        sleep_ms(3000); 
     }
 }
+

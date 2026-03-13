@@ -1,37 +1,25 @@
-#ifndef CAPTURE_H
-#define CAPTURE_H
+#ifndef _CAPTURE_H_
+#define _CAPTURE_H_
 
-#include <stdint.h>
-#include <stddef.h>
-#include <stdbool.h>
+#include "pico/stdlib.h"
+#include "hardware/pio.h"
+#include "hardware/dma.h"
 
-#define CAPTURE_BUFFER_SIZE (256 * 1024)
-#define CAPTURE_CHANNELS 8
-#define CAPTURE_SAMPLE_RATE 5000000
+#define CAPTURE_PIN_BASE 2
+#define CAPTURE_PIN_COUNT 8
+#define CAPTURE_BUFFER_SIZE_BYTES (384 * 1024)
 
-typedef enum {
-    TRIGGER_NONE = 0,
-    TRIGGER_RISING,
-    TRIGGER_FALLING,
-    TRIGGER_HIGH,
-    TRIGGER_LOW
-} trigger_mode_t;
-
+// This struct fixes the errors in stream.c
 typedef struct {
-    trigger_mode_t mode;
-    uint8_t channel;
-} trigger_config_t;
-
-typedef struct {
-    uint8_t *data;
+    uint8_t* data;
     size_t length;
-    uint32_t sample_rate;
-    uint8_t channels;
 } capture_buffer_t;
 
-bool capture_init(trigger_config_t trig);
-bool capture_start(void);
-bool capture_wait(void);
+// API Functions
+void capture_init(PIO pio, uint sm, float freq_hz);
+void capture_start(void);
+void capture_wait(void); // Blocking wait for stream.c
+bool capture_is_done(void);
 capture_buffer_t capture_get_buffer(void);
 
 #endif

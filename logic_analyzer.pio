@@ -1,5 +1,7 @@
 .program logic_analyzer
+    wait 1 pin 0
+    wait 0 pin 0
+
 .wrap_target
-    in pins, 8
-    push noblock
-.wrap
+    in pins, 8    ; Read 8 pins into the Shift Register
+.wrap             ; Autopush is handled in C config
